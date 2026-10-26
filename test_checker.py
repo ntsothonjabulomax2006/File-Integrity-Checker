@@ -1,4 +1,7 @@
+import contextlib
 import hashlib
+import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +22,7 @@ class TestCalculateHash(unittest.TestCase):
         path.write_bytes(content)
         return path
 
+    # ---- Step 1 tests ----
     def test_known_hash(self):
         f = self.make_file("a.txt", b"hello")
         self.assertEqual(
@@ -40,6 +44,31 @@ class TestCalculateHash(unittest.TestCase):
         data = b"x" * 100_000  # bigger than the 4096-byte block size
         f = self.make_file("big.bin", data)
         self.assertEqual(calculate_hash(f), hashlib.sha256(data).hexdigest())
+
+    # ---- Step 2 tests ----
+    def test_missing_file_returns_none(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            result = calculate_hash(self.dir / "nope.txt")
+        self.assertIsNone(result)
+        self.assertIn("not found", out.getvalue())
+
+    def test_folder_returns_none(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = calculate_hash(self.dir)
+        self.assertIsNone(result)
+
+    @unittest.skipIf(os.name == "nt" or os.geteuid() == 0,
+                     "permissions can't be tested on Windows or as root")
+    def test_unreadable_file_returns_none(self):
+        f = self.make_file("secret.txt", b"data")
+        f.chmod(0o000)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                result = calculate_hash(f)
+            self.assertIsNone(result)
+            self.assertIn("permission denied", out.getvalue())
+        finally:
+            f.chmod(0o644)  # so the temp folder can be cleaned up
 
 
 if __name__ == "__main__":
