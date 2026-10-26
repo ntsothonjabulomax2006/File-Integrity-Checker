@@ -1,4 +1,7 @@
 import hashlib
+from pathlib import Path
+
+IGNORED_DIRS = {".git", "__pycache__", "node_modules", ".venv"}
 
 
 def calculate_hash(filename):
@@ -23,8 +26,38 @@ def calculate_hash(filename):
     return sha256.hexdigest()
 
 
+def scan_folder(folder, ignored_dirs=IGNORED_DIRS):
+    """Hash every file in a folder (including subfolders).
+
+    Returns a dict of {relative file path: SHA-256 hash}.
+    Files that can't be read are skipped. Raises NotADirectoryError if
+    the folder doesn't exist, so a missing folder is never mistaken for
+    an empty one.
+    """
+    folder = Path(folder)
+    if not folder.is_dir():
+        raise NotADirectoryError(f"Not a folder: {folder}")
+
+    hashes = {}
+    for path in sorted(folder.rglob("*")):
+        relative = path.relative_to(folder)
+        if any(part in ignored_dirs for part in relative.parts):
+            continue
+        if not path.is_file():
+            continue
+        digest = calculate_hash(path)
+        if digest is not None:
+            hashes[relative.as_posix()] = digest
+    return hashes
+
+
 if __name__ == "__main__":
-    filename = input("Enter the file path: ")
-    file_hash = calculate_hash(filename)
-    if file_hash:
-        print("SHA-256:", file_hash)
+    folder = input("Enter the folder path: ")
+    try:
+        hashes = scan_folder(folder)
+    except NotADirectoryError as e:
+        print(f"Error: {e}")
+    else:
+        for name, digest in hashes.items():
+            print(f"{digest}  {name}")
+        print(f"\n{len(hashes)} files hashed.")
