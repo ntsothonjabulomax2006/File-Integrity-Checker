@@ -5,6 +5,9 @@
     python3 integrity.py check           compare the folder with the baseline
     python3 integrity.py update          accept the current state as the new baseline
 
+Set the INTEGRITY_KEY environment variable to sign the baseline (HMAC-SHA256),
+so that editing baseline.json by hand is detected.
+
 Exit codes: 0 = no changes, 1 = changes detected, 2 = error.
 """
 
@@ -16,6 +19,7 @@ from baseline import BASELINE_FILE, BaselineError, save_baseline
 from checker import scan_folder
 from compare import check_folder
 from report import build_report, has_changes, save_report
+from signing import get_key, sign_baseline, signature_path, verify_baseline
 
 EXIT_OK, EXIT_CHANGES, EXIT_ERROR = 0, 1, 2
 
@@ -27,6 +31,16 @@ def _without_baseline_file(hashes, folder, baseline_file):
     except ValueError:
         return hashes
     return {name: digest for name, digest in hashes.items() if name != own}
+
+
+def _sign_if_keyed(baseline_file):
+    """Sign the baseline if a key is set; otherwise drop any stale signature."""
+    key = get_key()
+    if key:
+        sign_baseline(baseline_file, key)
+        print(f"Baseline signed -> {signature_path(baseline_file)}")
+    else:
+        signature_path(baseline_file).unlink(missing_ok=True)
 
 
 def cmd_init(args):
@@ -41,10 +55,12 @@ def cmd_init(args):
     hashes = _without_baseline_file(scan_folder(args.folder), args.folder, baseline_file)
     save_baseline(args.folder, hashes, baseline_file)
     print(f"Baseline created for {len(hashes)} files -> {baseline_file}")
+    _sign_if_keyed(baseline_file)
     return EXIT_OK
 
 
 def cmd_check(args):
+    verify_baseline(args.baseline, get_key())
     data, result = check_folder(args.baseline)
     text = build_report(data["folder"], data["created"], result)
     print(text)
@@ -55,6 +71,8 @@ def cmd_check(args):
 
 
 def cmd_update(args):
+    # Never accept changes on top of a baseline we can't trust.
+    verify_baseline(args.baseline, get_key())
     data, result = check_folder(args.baseline)
     folder = data["folder"]
     hashes = _without_baseline_file(scan_folder(folder), folder, args.baseline)
@@ -64,6 +82,7 @@ def cmd_update(args):
         f"({len(result['modified'])} modified, {len(result['missing'])} missing, "
         f"{len(result['new'])} new accepted)"
     )
+    _sign_if_keyed(args.baseline)
     return EXIT_OK
 
 
