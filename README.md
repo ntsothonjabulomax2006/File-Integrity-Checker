@@ -4,6 +4,10 @@ A small command-line tool, written in Python, that tells you whether the files i
 
 It works by taking a SHA-256 fingerprint (hash) of every file and comparing it with a saved snapshot. The snapshot can also be signed with a secret key, so that tampering with the snapshot itself is detected. It uses only Python's standard library.
 
+
+##
+WTC-6P96G6NE
+
 ## What it does
 
 - Takes a **baseline**: a SHA-256 hash of every file in a folder, including subfolders.
